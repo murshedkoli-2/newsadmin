@@ -1,0 +1,95 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  EDITOR
+  CONTRIBUTOR
+}
+
+enum PostStatus {
+  DRAFT
+  PUBLISHED
+  SCHEDULED
+}
+
+model User {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  password      String?
+  image         String?
+  role          Role      @default(CONTRIBUTOR)
+  posts         Post[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Category {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  name        String   @unique
+  slug        String   @unique
+  description String?
+  posts       Post[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Post {
+  id            String     @id @default(auto()) @map("_id") @db.ObjectId
+  title         String
+  slug          String     @unique
+  content       String
+  excerpt       String?
+  featuredImage String?
+  status        PostStatus @default(DRAFT)
+  publishedAt   DateTime?
+  scheduledAt   DateTime?
+  author        User       @relation(fields: [authorId], references: [id])
+  authorId      String     @db.ObjectId
+  category      Category   @relation(fields: [categoryId], references: [id])
+  categoryId    String     @db.ObjectId
+  tags          String[]
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@index([authorId])
+  @@index([categoryId])
+}
+
+model Analytics {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  postId          String?
+  pageViews       Int      @default(0)
+  uniqueVisitors  Int      @default(0)
+  date            DateTime @default(now())
+  
+  @@index([postId])
+  @@index([date])
+}
+
+model Setting {
+  id                      String   @id @default(auto()) @map("_id") @db.ObjectId
+  key                     String   @unique
+  value                   String
+  updatedAt               DateTime @updatedAt
+}
+
+model PushToken {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  token     String   @unique
+  createdAt DateTime @default(now())
+}
