@@ -29,16 +29,63 @@ import { Input } from "@/components/ui/input";
 import prisma from "@/lib/prisma";
 import { format } from "date-fns";
 
+interface Article {
+    id: string;
+    title: string;
+    slug: string;
+    content: string;
+    excerpt: string | null;
+    featuredImage: string | null;
+    status: 'DRAFT' | 'PUBLISHED' | 'SCHEDULED';
+    isFeatured: boolean;
+    isBreaking: boolean;
+    publishedAt: Date | null;
+    scheduledAt: Date | null;
+    author: {
+        name: string | null;
+    } | null;
+    category: {
+        name: string;
+    };
+    tags: string[];
+    district: string | null;
+    upazila: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
 export default async function ArticlesPage() {
-    const articles = await prisma.post.findMany({
-        include: {
-            author: { select: { name: true } },
-            category: { select: { name: true } },
-        },
-        orderBy: {
-            createdAt: 'desc'
-        }
-    });
+    let articles: Article[] = [];
+    try {
+        // Use separate queries to avoid relation issues
+        const posts = await prisma.post.findMany({
+            orderBy: {
+                createdAt: 'desc'
+            }
+        });
+        
+        // Fetch related data separately to handle potential missing relations
+        articles = await Promise.all(posts.map(async (post) => {
+            const author = await prisma.user.findUnique({
+                where: { id: post.authorId },
+                select: { name: true }
+            });
+            
+            const category = await prisma.category.findUnique({
+                where: { id: post.categoryId },
+                select: { name: true }
+            });
+            
+            return {
+                ...post,
+                author: author || null,
+                category: category || { name: 'Uncategorized' }
+            };
+        }));
+    } catch (error) {
+        console.error('Database query error:', error);
+        articles = [] as Article[];
+    }
 
     return (
         <div className="space-y-6">
@@ -85,7 +132,7 @@ export default async function ArticlesPage() {
                         {articles.map((article) => (
                             <TableRow key={article.id}>
                                 <TableCell className="font-medium">{article.title}</TableCell>
-                                <TableCell className="text-muted-foreground">{article.author.name || "Unknown"}</TableCell>
+                                <TableCell className="text-muted-foreground">{article.author?.name || "Unknown"}</TableCell>
                                 <TableCell>
                                     <Badge variant="outline" className="bg-secondary text-secondary-foreground font-normal border-border">
                                         {article.category.name}

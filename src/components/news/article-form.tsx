@@ -24,7 +24,9 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Newspaper, Image as ImageIcon, Tags, Calendar as CalendarIcon, Save, Send } from "lucide-react";
+import { Newspaper, Image as ImageIcon, Tags, Calendar as CalendarIcon, Save, Send, MapPin, X } from "lucide-react";
+import { districts } from "@/lib/bd-locations";
+import { useState, useEffect, useRef } from "react";
 
 const formSchema = z.object({
     title: z.string().min(5, {
@@ -41,24 +43,131 @@ const formSchema = z.object({
     status: z.enum(["DRAFT", "PUBLISHED", "SCHEDULED"]),
     featuredImage: z.string().optional(),
     tags: z.string().optional(),
+    isFeatured: z.boolean(),
+    isBreaking: z.boolean(),
+    district: z.string().optional(),
+    upazila: z.string().optional(),
 });
 
-export function ArticleForm({ initialData, categories }: { initialData?: any, categories: { id: string, name: string }[] }) {
+interface ArticleData {
+    id?: string;
+    title?: string;
+    slug?: string;
+    content?: string;
+    excerpt?: string;
+    status?: 'DRAFT' | 'PUBLISHED' | 'SCHEDULED';
+    tags?: string[];
+    isFeatured?: boolean;
+    isBreaking?: boolean;
+    categoryId?: string;
+    featuredImage?: string;
+    district?: string;
+    upazila?: string;
+}
+
+export function ArticleForm({ initialData, categories }: { initialData?: ArticleData, categories: { id: string, name: string }[] }) {
     const form = useForm<z.infer<typeof formSchema>>({
         resolver: zodResolver(formSchema),
-        defaultValues: initialData || {
-            title: "",
-            slug: "",
-            content: "",
-            excerpt: "",
-            status: "DRAFT",
-            tags: "",
+        defaultValues: {
+            title: initialData?.title || "",
+            slug: initialData?.slug || "",
+            content: initialData?.content || "",
+            excerpt: initialData?.excerpt || "",
+            status: initialData?.status || "DRAFT",
+            tags: initialData?.tags?.join(", ") || "",
+            // Handle tags if they come as array or string from initialData.
+            // Assuming initialData matches the detailed post structure, tags is string[] in DB but string in form.
+            // But let's be careful. The previous code just passed initialData.
+            // Let's stick to safe defaults.
+            isFeatured: initialData?.isFeatured || false,
+            isBreaking: initialData?.isBreaking || false,
+            categoryId: initialData?.categoryId || "",
+            featuredImage: initialData?.featuredImage || "",
+            district: initialData?.district || "",
+            upazila: initialData?.upazila || "",
         },
     });
 
-    function onSubmit(values: z.infer<typeof formSchema>) {
-        console.log(values);
-        // Handle submission to API
+    const [selectedDistrict, setSelectedDistrict] = useState<string>(initialData?.district || "");
+    const [upazilas, setUpazilas] = useState<string[]>([]);
+    
+    // Auto-generate slug from title
+    useEffect(() => {
+        const subscription = form.watch((value, { name }) => {
+            if (name === 'title' && !value.slug && value.title) {
+                const generatedSlug = value.title
+                    .toLowerCase()
+                    .replace(/[^a-zA-Z0-9\s]/g, '')
+                    .replace(/\s+/g, '-')
+                    .trim();
+                form.setValue('slug', generatedSlug);
+            }
+        });
+        
+        return () => subscription.unsubscribe();
+    }, [form]);
+
+    useEffect(() => {
+        if (selectedDistrict) {
+            const districtData = districts.find(d => d.name === selectedDistrict);
+            setUpazilas(districtData?.upazilas || []);
+        } else {
+            setUpazilas([]);
+        }
+    }, [selectedDistrict]);
+
+    async function onSubmit(values: z.infer<typeof formSchema>) {
+        try {
+            // If we have initialData, it means we're updating an article
+            if (initialData) {
+                const response = await fetch('/api/articles', {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        id: initialData.id,
+                        ...values,
+                    }),
+                });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    console.log('Article updated successfully:', result);
+                    // Optionally show success message
+                    alert('Article updated successfully!');
+                } else {
+                    console.error('Failed to update article');
+                    alert('Failed to update article');
+                }
+            } else {
+                // Creating a new article
+                const response = await fetch('/api/articles', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(values),
+                });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    console.log('Article created successfully:', result);
+                    // Optionally show success message
+                    alert('Article created successfully!');
+                    // Optionally redirect to the article list page
+                    setTimeout(() => {
+                        window.location.href = '/news';
+                    }, 1000);
+                } else {
+                    console.error('Failed to create article');
+                    alert('Failed to create article');
+                }
+            }
+        } catch (error) {
+            console.error('Error submitting form:', error);
+            alert('An error occurred while submitting the form');
+        }
     }
 
     return (
@@ -149,6 +258,65 @@ export function ArticleForm({ initialData, categories }: { initialData?: any, ca
                                 />
                             </CardContent>
                         </Card>
+
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Location</CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                <FormField
+                                    control={form.control}
+                                    name="district"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>District</FormLabel>
+                                            <Select onValueChange={(value) => {
+                                                field.onChange(value);
+                                                setSelectedDistrict(value);
+                                            }} defaultValue={field.value}>
+                                                <FormControl>
+                                                    <SelectTrigger>
+                                                        <SelectValue placeholder="Select district" />
+                                                    </SelectTrigger>
+                                                </FormControl>
+                                                <SelectContent>
+                                                    {districts.map((district) => (
+                                                        <SelectItem key={district.name} value={district.name}>
+                                                            {district.name}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                                <FormField
+                                    control={form.control}
+                                    name="upazila"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Upazila (Sub-district)</FormLabel>
+                                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                                <FormControl>
+                                                    <SelectTrigger>
+                                                        <SelectValue placeholder="Select upazila" />
+                                                    </SelectTrigger>
+                                                </FormControl>
+                                                <SelectContent>
+                                                    {upazilas.map((upazila) => (
+                                                        <SelectItem key={upazila} value={upazila}>
+                                                            {upazila}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                            </CardContent>
+                        </Card>
                     </div>
 
                     <div className="space-y-6">
@@ -227,14 +395,113 @@ export function ArticleForm({ initialData, categories }: { initialData?: any, ca
 
                         <Card>
                             <CardHeader>
+                                <CardTitle>Visibility</CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                <FormField
+                                    control={form.control}
+                                    name="isFeatured"
+                                    render={({ field }) => (
+                                        <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
+                                            <div className="space-y-0.5">
+                                                <FormLabel>Featured Article</FormLabel>
+                                            </div>
+                                            <FormControl>
+                                                <Switch
+                                                    checked={field.value}
+                                                    onCheckedChange={field.onChange}
+                                                />
+                                            </FormControl>
+                                        </FormItem>
+                                    )}
+                                />
+                                <FormField
+                                    control={form.control}
+                                    name="isBreaking"
+                                    render={({ field }) => (
+                                        <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
+                                            <div className="space-y-0.5">
+                                                <FormLabel>Breaking News</FormLabel>
+                                            </div>
+                                            <FormControl>
+                                                <Switch
+                                                    checked={field.value}
+                                                    onCheckedChange={field.onChange}
+                                                />
+                                            </FormControl>
+                                        </FormItem>
+                                    )}
+                                />
+                            </CardContent>
+                        </Card>
+
+                        <Card>
+                            <CardHeader>
                                 <CardTitle>Featured Image</CardTitle>
                             </CardHeader>
                             <CardContent>
-                                <div className="flex flex-col items-center justify-center border-2 border-dashed rounded-lg p-6 hover:border-primary/50 transition-colors cursor-pointer group">
-                                    <ImageIcon className="h-10 w-10 text-muted-foreground group-hover:text-primary transition-colors mb-2" />
-                                    <p className="text-sm text-muted-foreground group-hover:text-foreground">Click to upload or drag and drop</p>
-                                    <p className="text-xs text-muted-foreground/60 mt-1">PNG, JPG up to 10MB</p>
-                                </div>
+                                <FormField
+                                    control={form.control}
+                                    name="featuredImage"
+                                    render={({ field: { onChange, value, ...fieldProps } }) => (
+                                        <FormItem>
+                                            <FormControl>
+                                                <div 
+                                                    className="flex flex-col items-center justify-center border-2 border-dashed rounded-lg p-6 hover:border-primary/50 transition-colors cursor-pointer group"
+                                                    onClick={() => document.getElementById('featured-image-upload')?.click()}
+                                                >
+                                                    {value ? (
+                                                        <div className="relative w-full max-w-[200px] h-40 overflow-hidden rounded-md">
+                                                            <img 
+                                                                src={value} 
+                                                                alt="Featured" 
+                                                                className="w-full h-full object-cover"
+                                                                onError={(e) => {
+                                                                    const target = e.target as HTMLImageElement;
+                                                                    target.onerror = null;
+                                                                    target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='160' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' fill='%23e5e7eb'/%3E%3Ccircle cx='12' cy='10' r='3' fill='%239ca3af'/%3E%3Cpath d='M4 20c0-1.7 1.3-3 3-3s3 1.3 3 3-1.3 3-3 3-3-1.3-3-3zm14 0c0-1.7 1.3-3 3-3s3 1.3 3 3-1.3 3-3 3-3-1.3-3-3z' fill='%239ca3af'/%3E%3C/svg%3E";
+                                                                }}
+                                                            />
+                                                            <button 
+                                                                type="button" 
+                                                                className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    onChange('');
+                                                                }}
+                                                            >
+                                                                <X size={16} />
+                                                            </button>
+                                                        </div>
+                                                    ) : (
+                                                        <>
+                                                            <ImageIcon className="h-10 w-10 text-muted-foreground group-hover:text-primary transition-colors mb-2" />
+                                                            <p className="text-sm text-muted-foreground group-hover:text-foreground">Click to upload or drag and drop</p>
+                                                            <p className="text-xs text-muted-foreground/60 mt-1">PNG, JPG up to 10MB</p>
+                                                        </>
+                                                    )}
+                                                    <input
+                                                        id="featured-image-upload"
+                                                        type="file"
+                                                        className="hidden"
+                                                        accept="image/*"
+                                                        onChange={(e) => {
+                                                            const file = e.target.files?.[0];
+                                                            if (file) {
+                                                                const reader = new FileReader();
+                                                                reader.onload = () => {
+                                                                    onChange(reader.result as string);
+                                                                };
+                                                                reader.readAsDataURL(file);
+                                                            }
+                                                        }}
+                                                    />
+                                                </div>
+                                            </FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
                             </CardContent>
                         </Card>
 

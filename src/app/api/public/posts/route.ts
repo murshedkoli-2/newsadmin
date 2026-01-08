@@ -10,10 +10,18 @@ export async function GET(req: Request) {
         const skip = (page - 1) * limit;
 
         const search = searchParams.get("search");
+        const featured = searchParams.get("featured") === "true";
+        const breaking = searchParams.get("breaking") === "true";
+        const district = searchParams.get("district");
+        const upazila = searchParams.get("upazila");
 
         const where: any = {
             status: "PUBLISHED",
             ...(categoryId && { categoryId }),
+            ...(featured && { isFeatured: true }),
+            ...(breaking && { isBreaking: true }),
+            ...(district && { district }),
+            ...(upazila && { upazila }),
         };
 
         if (search) {
