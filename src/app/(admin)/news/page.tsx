@@ -7,27 +7,16 @@ import {
     TableRow
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuLabel,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger
-} from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import {
-    MoreHorizontal,
     Plus,
-    Pencil,
-    Trash2,
-    Eye,
     Search
 } from "lucide-react";
 import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import prisma from "@/lib/prisma";
 import { format } from "date-fns";
+import { ArticleActions } from "@/components/news/article-actions";
 
 interface Article {
     id: string;
@@ -57,31 +46,41 @@ interface Article {
 export default async function ArticlesPage() {
     let articles: Article[] = [];
     try {
-        // Use separate queries to avoid relation issues
+        // Get all posts
         const posts = await prisma.post.findMany({
             orderBy: {
                 createdAt: 'desc'
             }
         });
         
-        // Fetch related data separately to handle potential missing relations
-        articles = await Promise.all(posts.map(async (post) => {
-            const author = await prisma.user.findUnique({
-                where: { id: post.authorId },
-                select: { name: true }
-            });
+        if (posts.length > 0) {
+            // Extract unique author and category IDs to fetch in batches
+            const authorIds = [...new Set(posts.map(p => p.authorId))];
+            const categoryIds = [...new Set(posts.map(p => p.categoryId))];
             
-            const category = await prisma.category.findUnique({
-                where: { id: post.categoryId },
-                select: { name: true }
-            });
+            // Fetch all related data in batch
+            const [authors, categories] = await Promise.all([
+                prisma.user.findMany({
+                    where: { id: { in: authorIds } },
+                    select: { id: true, name: true }
+                }),
+                prisma.category.findMany({
+                    where: { id: { in: categoryIds } },
+                    select: { id: true, name: true }
+                })
+            ]);
             
-            return {
+            // Create lookup maps for efficient access
+            const authorMap = new Map(authors.map(a => [a.id, a]));
+            const categoryMap = new Map(categories.map(c => [c.id, c]));
+            
+            // Combine posts with their relations
+            articles = posts.map(post => ({
                 ...post,
-                author: author || null,
-                category: category || { name: 'Uncategorized' }
-            };
-        }));
+                author: authorMap.get(post.authorId) ? { name: authorMap.get(post.authorId)?.name || 'Unknown Author' } : { name: 'Unknown Author' },
+                category: categoryMap.get(post.categoryId) ? { name: categoryMap.get(post.categoryId)?.name || 'Uncategorized' } : { name: 'Uncategorized' }
+            }));
+        }
     } catch (error) {
         console.error('Database query error:', error);
         articles = [] as Article[];
@@ -157,26 +156,7 @@ export default async function ArticlesPage() {
                                 </TableCell>
                                 <TableCell className="text-right font-semibold">0</TableCell>
                                 <TableCell>
-                                    <DropdownMenu>
-                                        <DropdownMenuTrigger asChild>
-                                            <Button variant="ghost" className="h-8 w-8 p-0">
-                                                <MoreHorizontal className="h-4 w-4" />
-                                            </Button>
-                                        </DropdownMenuTrigger>
-                                        <DropdownMenuContent align="end" className="w-40">
-                                            <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                                            <DropdownMenuItem className="cursor-pointer">
-                                                <Eye className="mr-2 h-4 w-4" /> View
-                                            </DropdownMenuItem>
-                                            <DropdownMenuItem className="cursor-pointer">
-                                                <Pencil className="mr-2 h-4 w-4" /> Edit
-                                            </DropdownMenuItem>
-                                            <DropdownMenuSeparator />
-                                            <DropdownMenuItem className="cursor-pointer text-destructive focus:bg-destructive/10 focus:text-destructive font-medium">
-                                                <Trash2 className="mr-2 h-4 w-4" /> Delete
-                                            </DropdownMenuItem>
-                                        </DropdownMenuContent>
-                                    </DropdownMenu>
+                                    <ArticleActions articleId={article.id} />
                                 </TableCell>
                             </TableRow>
                         ))}

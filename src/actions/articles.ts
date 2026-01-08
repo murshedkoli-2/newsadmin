@@ -53,9 +53,7 @@ export async function updateArticle(id: string, values: ArticleData) {
     try {
         const post = await prisma.post.update({
             where: { id },
-            data: {
-                ...values
-            },
+            data: values,
             include: {
                 category: true
             }

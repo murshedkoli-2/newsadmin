@@ -24,17 +24,17 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Newspaper, Image as ImageIcon, Tags, Calendar as CalendarIcon, Save, Send, MapPin, X } from "lucide-react";
+import { Newspaper, Image as ImageIcon, Tags, Calendar as CalendarIcon, Save, Send, MapPin, X, Pencil } from "lucide-react";
 import { districts } from "@/lib/bd-locations";
 import { useState, useEffect, useRef } from "react";
+import { useToast } from "@/hooks/use-toast";
+import { ToastUI } from "@/components/ui/toast";
 
 const formSchema = z.object({
     title: z.string().min(5, {
         message: "Title must be at least 5 characters.",
     }),
-    slug: z.string().min(5, {
-        message: "Slug must be at least 5 characters.",
-    }),
+    slug: z.string().optional(),
     content: z.string().min(20, {
         message: "Content must be at least 20 characters.",
     }),
@@ -90,6 +90,7 @@ export function ArticleForm({ initialData, categories }: { initialData?: Article
 
     const [selectedDistrict, setSelectedDistrict] = useState<string>(initialData?.district || "");
     const [upazilas, setUpazilas] = useState<string[]>([]);
+    const { toast, notify } = useToast();
     
     // Auto-generate slug from title
     useEffect(() => {
@@ -134,11 +135,21 @@ export function ArticleForm({ initialData, categories }: { initialData?: Article
                 if (response.ok) {
                     const result = await response.json();
                     console.log('Article updated successfully:', result);
-                    // Optionally show success message
-                    alert('Article updated successfully!');
+                    notify({
+                        title: "Article updated successfully!",
+                        description: "Your changes have been saved.",
+                    });
+                    // Redirect to view page after successful update
+                    setTimeout(() => {
+                        window.location.href = `/news/${initialData.id}`;
+                    }, 1000);
                 } else {
                     console.error('Failed to update article');
-                    alert('Failed to update article');
+                    notify({
+                        title: "Update failed",
+                        description: "Could not update the article. Please try again.",
+                        variant: "destructive",
+                    });
                 }
             } else {
                 // Creating a new article
@@ -153,20 +164,30 @@ export function ArticleForm({ initialData, categories }: { initialData?: Article
                 if (response.ok) {
                     const result = await response.json();
                     console.log('Article created successfully:', result);
-                    // Optionally show success message
-                    alert('Article created successfully!');
+                    notify({
+                        title: "Article created successfully!",
+                        description: "Your article has been published.",
+                    });
                     // Optionally redirect to the article list page
                     setTimeout(() => {
                         window.location.href = '/news';
                     }, 1000);
                 } else {
                     console.error('Failed to create article');
-                    alert('Failed to create article');
+                    notify({
+                        title: "Create failed",
+                        description: "Could not create the article. Please try again.",
+                        variant: "destructive",
+                    });
                 }
             }
         } catch (error) {
             console.error('Error submitting form:', error);
-            alert('An error occurred while submitting the form');
+            notify({
+                title: "Submit failed",
+                description: "An unexpected error occurred while submitting the form.",
+                variant: "destructive",
+            });
         }
     }
 
@@ -201,7 +222,7 @@ export function ArticleForm({ initialData, categories }: { initialData?: Article
                                     name="slug"
                                     render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel>Slug</FormLabel>
+                                            <FormLabel>Slug (optional)</FormLabel>
                                             <FormControl>
                                                 <Input
                                                     placeholder="article-url-slug"
@@ -209,7 +230,7 @@ export function ArticleForm({ initialData, categories }: { initialData?: Article
                                                 />
                                             </FormControl>
                                             <FormDescription className="text-xs">
-                                                The URL-friendly version of the title.
+                                                Leave blank to auto-generate from title.
                                             </FormDescription>
                                             <FormMessage />
                                         </FormItem>
@@ -510,12 +531,17 @@ export function ArticleForm({ initialData, categories }: { initialData?: Article
                                 <Save className="mr-2 h-4 w-4" /> Save Draft
                             </Button>
                             <Button type="submit" className="flex-1">
-                                <Send className="mr-2 h-4 w-4" /> Publish
+                                {initialData ? (
+                                    <><Pencil className="mr-2 h-4 w-4" /> Update</>
+                                ) : (
+                                    <><Send className="mr-2 h-4 w-4" /> Publish</>
+                                )}
                             </Button>
                         </div>
                     </div>
                 </div>
             </form>
+            {toast && <ToastUI toast={toast} />}
         </Form>
     );
 }

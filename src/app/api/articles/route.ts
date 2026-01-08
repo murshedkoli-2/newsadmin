@@ -102,8 +102,9 @@ export async function PUT(request: Request) {
       processedFeaturedImage = body.featuredImage;
     }
 
-    const result = await updateArticle(body.id, {
-      ...body,
+    const { id, ...payload } = body;
+    const result = await updateArticle(id, {
+      ...payload,
       slug,
       featuredImage: processedFeaturedImage,
       tags: body.tags ? body.tags.split(',').map((tag: string) => tag.trim()).filter((tag: string) => tag) : []
@@ -119,6 +120,30 @@ export async function PUT(request: Request) {
     }
   } catch (error) {
     console.error("[ARTICLES_PUT]", error);
+    return NextResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const body = await request.json().catch(() => null);
+    const id = body?.id;
+
+    if (!id) {
+      return NextResponse.json(
+        { error: "Article ID is required" },
+        { status: 400 }
+      );
+    }
+
+    await prisma.post.delete({ where: { id } });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("[ARTICLES_DELETE]", error);
     return NextResponse.json(
       { error: "Internal Server Error" },
       { status: 500 }
